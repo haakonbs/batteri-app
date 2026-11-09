@@ -39,6 +39,7 @@
   .eta .big{font-size:34px;font-weight:700;margin:2px 0}
   .soc{flex-wrap:wrap}
   label{font-size:14px;color:var(--mut)}
+  select{background:#232c36;color:var(--fg);border:1px solid #3a4652;border-radius:8px;padding:6px 8px;font-size:15px;margin:0 4px}
   input[type=number]{width:80px;background:#232c36;color:var(--fg);border:1px solid #3a4652;border-radius:8px;padding:6px 8px;font-size:15px;margin:0 4px}
   details summary{cursor:pointer;color:var(--mut);font-size:14px}
   .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -73,6 +74,12 @@
     <div class="row" style="margin:0;align-items:center">
       <label>Reell kapasitet <input id="realCap" type="number" min="10" max="1000" step="1" value="100"> Ah</label>
       <label>Typisk forbruk <input id="typLoad" type="number" min="0.1" max="200" step="0.1" value="3"> A</label>
+      <label>Timer igjen ut fra <select id="etaMode">
+        <option value="now">Strøm akkurat nå</option>
+        <option value="typ">Typisk forbruk</option>
+        <option value="avg10">Snitt siste 10 min</option>
+        <option value="avg1">Snitt siste minutt</option>
+      </select></label>
     </div>
     <p class="status" style="margin:8px 0 0">BMS-en regner med feil kapasitet (75 Ah). Appen korrigerer prosent og timer igjen ut fra reell kapasitet. «Typisk forbruk» brukes når batteriet står i hvile.</p>
   </section>
@@ -216,17 +223,20 @@ function render(x){
   else if (x.a > -0.1 && x.v >= 13.45) ch = ['🔌 Lader trolig tilkoblet – vedlikehold', 'var(--ok)'];
   else ch = ['Ingen lader', 'var(--mut)'];
   $('charger').innerHTML = `<span style="color:${ch[1]}">${ch[0]}</span>`;
-  // snitt over siste ~minutt – BMS-en rapporterer ofte 0 A annenhver gang ved små strømmer
-  hist.push(x.a); if (hist.length > 20) hist.shift();
-  const avgA = hist.reduce((p,c)=>p+c,0)/hist.length;
-  $('avgA').textContent = hist.length>2 ? 'snitt siste minutt: '+avgA.toFixed(2)+' A' : '';
+  // historikk for snitt (1 avlesning ≈ 3 s)
+  hist.push(x.a); if (hist.length > 200) hist.shift();
+  const mean = n => { const h = hist.slice(-n); return h.reduce((p,c)=>p+c,0)/h.length; };
+  const mode = $('etaMode').value;
+  const useA = mode==='now' ? x.a : mode==='avg1' ? mean(20) : mode==='avg10' ? mean(200) : 0;
+  $('avgA').textContent = hist.length>2 ? 'snitt siste minutt: '+mean(20).toFixed(2)+' A' : '';
+  const label = {now:'nåværende forbruk', avg1:'snitt siste minutt', avg10:'snitt siste 10 min'}[mode];
   let eta='–', note='';
-  if (avgA > 0.05){ eta = fmtH((st.real-realRem)/avgA); note='til fullt ved '+avgA.toFixed(2)+' A lading (snitt)'; }
-  else if (avgA < -0.05){ eta = fmtH(realRem/-avgA); note='ved snittforbruk '+(-avgA).toFixed(2)+' A'; }
+  if (x.a > 0.05){ eta = fmtH((st.real-realRem)/x.a); note='til fullt ved '+x.a.toFixed(2)+' A lading'; }
+  else if (mode!=='typ' && useA < -0.05){ eta = fmtH(realRem/-useA); note='ved '+label+' ('+(-useA).toFixed(2)+' A)'; }
   else { eta = fmtH(realRem/st.typ); note='ved typisk forbruk ('+st.typ+' A) · '+realRem.toFixed(0)+' Ah igjen'; }
   $('eta').textContent = eta;
   $('etaNote').textContent = note;
-  document.querySelector('.eta .l').textContent = avgA > 0.05 ? 'Tid til fullt' : 'Timer igjen';
+  document.querySelector('.eta .l').textContent = x.a > 0.05 ? 'Tid til fullt' : 'Timer igjen';
   $('remCap').textContent = realRem.toFixed(1)+' Ah';
   $('nomCap').innerHTML = st.real+' Ah'+(st.real!==x.nom?` <small style="font-size:12px;color:var(--mut)">(BMS: ${x.nom})</small>`:'');
   $('cycles').textContent = x.cyc;
@@ -409,7 +419,7 @@ function onDisc(){ clearInterval(pollTimer); lastT=null; writeChar=null; setStat
 
 $('btnConnect').onclick = connect;
 $('btnDisconnect').onclick = ()=>{ if(device?.gatt.connected) device.gatt.disconnect(); };
-for (const id of ['realCap','typLoad']){
+for (const id of ['realCap','typLoad','etaMode']){
   try{ const v=localStorage.getItem(id); if(v) $(id).value=v; }catch(e){}
   $(id).addEventListener('change', ()=>{ try{ localStorage.setItem(id,$(id).value);}catch(e){} });
 }
