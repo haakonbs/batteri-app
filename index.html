@@ -61,6 +61,7 @@
     <div class="flow">
       <div><b id="vTot">– V</b></div>
       <div><b id="cur">– A</b> <span id="dir"></span></div>
+      <div id="charger" style="margin-top:4px"></div>
       <div id="power">– W</div>
     </div>
     <div class="eta"><div class="l">Timer igjen</div><div class="big" id="eta">–</div><div class="status" id="etaNote"></div></div>
@@ -208,6 +209,12 @@ function render(x){
   $('cur').textContent = Math.abs(x.a).toFixed(2)+' A';
   $('dir').textContent = x.a>0.05?'⬆ lader':x.a<-0.05?'⬇ forbruk':'hvile';
   $('power').textContent = (x.v*x.a).toFixed(0)+' W';
+  // Lader: strøm inn = lader helt sikkert. Ingen strøm men spenning holdt oppe (vedlikehold ~13,5 V) = lader trolig tilkoblet.
+  let ch;
+  if (x.a > 0.1) ch = ['🔌 Lader tilkoblet – lader', 'var(--ok)'];
+  else if (x.a > -0.1 && x.v >= 13.45) ch = ['🔌 Lader trolig tilkoblet – vedlikehold', 'var(--ok)'];
+  else ch = ['Ingen lader', 'var(--mut)'];
+  $('charger').innerHTML = `<span style="color:${ch[1]}">${ch[0]}</span>`;
   // glattet forbruk så tallet ikke hopper
   if (x.a < -0.05) avgLoad = avgLoad===null ? -x.a : avgLoad*0.8 + (-x.a)*0.2;
   let eta='–', note='';
