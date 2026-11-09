@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunwind Batteri</title>
+<style>
+  :root{--bg:#0f1419;--card:#1a2129;--fg:#e6edf3;--mut:#8b98a5;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+  header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  h1{font-size:20px;margin:0}
+  .status{font-size:13px;color:var(--mut)}
+  button{background:var(--acc);color:#04111f;border:0;border-radius:10px;padding:10px 16px;font-weight:600;font-size:15px;cursor:pointer}
+  button.sec{background:#2d3742;color:var(--fg)}
+  button:disabled{opacity:.4;cursor:default}
+  main{padding:0 20px 30px;max-width:900px;margin:0 auto}
+  .soc{background:var(--card);border-radius:16px;padding:20px;display:flex;align-items:center;gap:24px;margin-bottom:14px}
+  .ring{--p:0;width:130px;height:130px;border-radius:50%;background:conic-gradient(var(--c,var(--ok)) calc(var(--p)*1%),#2d3742 0);display:grid;place-items:center;flex:none}
+  .ring>div{width:104px;height:104px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:30px;font-weight:700}
+  .flow{font-size:15px;color:var(--mut);line-height:1.6}
+  .flow b{color:var(--fg);font-size:22px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+  .tile{background:var(--card);border-radius:14px;padding:14px}
+  .tile .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .tile .v{font-size:22px;font-weight:650;margin-top:4px}
+  .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 10px;color:var(--mut);font-weight:600}
+  .cells{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px}
+  .cell{background:#232c36;border-radius:10px;padding:8px;text-align:center;font-variant-numeric:tabular-nums}
+  .cell small{display:block;color:var(--mut);font-size:11px}
+  .cell.hi{outline:2px solid var(--warn)} .cell.lo{outline:2px solid var(--acc)}
+  .chips span{display:inline-block;background:#232c36;border-radius:20px;padding:4px 10px;margin:3px;font-size:13px}
+  .chips .on{background:#1f3d2a;color:var(--ok)} .chips .off{background:#3d1f1f;color:var(--bad)}
+  pre{background:#0b0f13;border-radius:10px;padding:10px;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
+  .warnbox{background:#3d2e10;color:#f0c674;border-radius:12px;padding:12px 14px;margin:0 20px 14px;font-size:14px}
+  .eta{margin-left:auto;text-align:right}
+  .eta .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .eta .big{font-size:34px;font-weight:700;margin:2px 0}
+  .soc{flex-wrap:wrap}
+  label{font-size:14px;color:var(--mut)}
+  input[type=number]{width:80px;background:#232c36;color:var(--fg);border:1px solid #3a4652;border-radius:8px;padding:6px 8px;font-size:15px;margin:0 4px}
+  details summary{cursor:pointer;color:var(--mut);font-size:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🔋 Sunwind Batteri</h1><div class="status" id="status">Ikke tilkoblet</div></div>
+  <div class="row" style="margin:0">
+    <button id="btnConnect">Koble til</button>
+    <button id="btnDisconnect" class="sec" disabled>Koble fra</button>
+  </div>
+</header>
+<div class="warnbox" id="nobt" hidden>Nettleseren støtter ikke Web Bluetooth. Bruk Chrome eller Edge på PC/Mac/Android. På iPhone: bruk appen <b>Bluefy</b> (gratis i App Store).</div>
+
+<main>
+  <section class="soc">
+    <div class="ring" id="ring"><div id="socTxt">–</div></div>
+    <div class="flow">
+      <div><b id="vTot">– V</b></div>
+      <div><b id="cur">– A</b> <span id="dir"></span></div>
+      <div id="power">– W</div>
+    </div>
+    <div class="eta"><div class="l">Timer igjen</div><div class="big" id="eta">–</div><div class="status" id="etaNote"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Innstillinger</h2>
+    <div class="row" style="margin:0;align-items:center">
+      <label>Reell kapasitet <input id="realCap" type="number" min="10" max="1000" step="1" value="100"> Ah</label>
+      <label>Typisk forbruk <input id="typLoad" type="number" min="0.1" max="200" step="0.1" value="3"> A</label>
+    </div>
+    <p class="status" style="margin:8px 0 0">BMS-en regner med feil kapasitet (75 Ah). Appen korrigerer prosent og timer igjen ut fra reell kapasitet. «Typisk forbruk» brukes når batteriet står i hvile.</p>
+  </section>
+
+  <section class="grid">
+    <div class="tile"><div class="l">Gjenværende</div><div class="v" id="remCap">–</div></div>
+    <div class="tile"><div class="l">Kapasitet</div><div class="v" id="nomCap">–</div></div>
+    <div class="tile"><div class="l">Sykluser</div><div class="v" id="cycles">–</div></div>
+    <div class="tile"><div class="l">Temperatur</div><div class="v" id="temps">–</div></div>
+    <div class="tile"><div class="l">Celle-avvik</div><div class="v" id="delta">–</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Kapasitetstest – Ah målt av appen</h2>
+    <div class="grid" style="margin:0">
+      <div class="tile" style="background:#232c36"><div class="l">Tatt ut</div><div class="v" id="ahOut">0.0 Ah</div></div>
+      <div class="tile" style="background:#232c36"><div class="l">Ladet inn</div><div class="v" id="ahIn">0.0 Ah</div></div>
+      <div class="tile" style="background:#232c36"><div class="l">Målt tid</div><div class="v" id="ahTime">0 min</div></div>
+    </div>
+    <div class="row"><button class="sec" id="btnReset">Nullstill teller</button></div>
+    <p class="status" style="margin:10px 0 0">Teller strøm fra batteriets egen måler mens appen er tilkoblet. Nullstill når batteriet er fullt, la PC/telefon stå tilkoblet med skjermen på til BMS-en kobler ut – «Tatt ut» er da den reelle kapasiteten. Eller nullstill når batteriet er tomt og les «Ladet inn» når det er fullt.</p>
+  </section>
+
+  <section class="card"><h2>Celler</h2><div class="cells" id="cells"><span class="status">Ingen data</span></div></section>
+  <section class="card"><h2>Status</h2><div class="chips" id="chips"><span>–</span></div></section>
+
+  <section class="card">
+    <details id="diag">
+      <summary>Diagnose / rålogg (send denne til Claude hvis appen ikke viser data)</summary>
+      <div class="row">
+        <button class="sec" id="btnCopy">Kopier logg</button>
+        <button class="sec" id="btnClear">Tøm logg</button>
+      </div>
+      <pre id="log"></pre>
+    </details>
+  </section>
+</main>
+
+<script>
+// ---------- Kjente BLE-tjenester for LiFePO4-BMS ----------
+const SERVICES = [
+  0xff00, 0xffe0, 0xfff0, 0xffd0, 0xfe50, 0xfa00, 0x180a, 0x180f,
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART
+  '0000ff00-0000-1000-8000-00805f9b34fb'
+];
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+let device, server, writeChar, pollTimer, rxBuf = [], proto = null, gotData = false;
+
+function log(msg){ const t=new Date().toLocaleTimeString('no'); logEl.textContent += `[${t}] ${msg}\n`; logEl.scrollTop = logEl.scrollHeight; }
+const hex = a => Array.from(a, b => b.toString(16).padStart(2,'0')).join(' ');
+const setStatus = s => $('status').textContent = s;
+
+if (!navigator.bluetooth) { $('nobt').hidden = false; $('btnConnect').disabled = true; }
+
+// ---------- JBD / Xiaoxiang-protokoll ----------
+const JBD_BASIC = new Uint8Array([0xdd,0xa5,0x03,0x00,0xff,0xfd,0x77]);
+const JBD_CELLS = new Uint8Array([0xdd,0xa5,0x04,0x00,0xff,0xfc,0x77]);
+
+function jbdFeed(bytes){
+  rxBuf.push(...bytes);
+  while (rxBuf.length >= 7) {
+    const s = rxBuf.indexOf(0xdd);
+    if (s < 0) { rxBuf = []; return; }
+    if (s > 0) rxBuf = rxBuf.slice(s);
+    if (rxBuf.length < 4) return;
+    const len = rxBuf[3], total = 4 + len + 3;
+    if (rxBuf.length < total) return;
+    const frame = rxBuf.slice(0, total); rxBuf = rxBuf.slice(total);
+    if (frame[total-1] !== 0x77) { log('JBD: ugyldig ramme ' + hex(frame)); continue; }
+    if (frame[2] !== 0x00) { log('JBD: feilkode ' + frame[2]); continue; }
+    const d = frame.slice(4, 4+len);
+    if (frame[1] === 0x03) jbdBasic(d);
+    if (frame[1] === 0x04) jbdCells(d);
+  }
+}
+const u16 = (d,i) => (d[i]<<8)|d[i+1];
+const s16 = (d,i) => { const v=u16(d,i); return v>0x7fff ? v-0x10000 : v; };
+
+const PROT_BITS = ['Celle overspenning','Celle underspenning','Pakke overspenning','Pakke underspenning',
+  'Lade-overtemp','Lade-undertemp','Utlade-overtemp','Utlade-undertemp','Lade-overstrøm',
+  'Utlade-overstrøm','Kortslutning','IC-feil','MOS låst av programvare'];
+
+function jbdBasic(d){
+  gotData = true; proto = 'JBD';
+  const v = u16(d,0)/100, a = s16(d,2)/100, rem = u16(d,4)/100, nom = u16(d,6)/100;
+  const cyc = u16(d,8), prot = u16(d,16), soc = d[19], fet = d[20], ntc = d[22];
+  const temps = []; for (let i=0;i<ntc;i++) temps.push(((u16(d,23+i*2)-2731)/10).toFixed(1));
+  render({v,a,rem,nom,cyc,soc,temps,
+    chips:[{t:'Lading', on:!!(fet&1)},{t:'Utlading', on:!!(fet&2)},
+      ...PROT_BITS.filter((_,i)=>prot&(1<<i)).map(t=>({t:'⚠ '+t,on:false}))]});
+}
+function jbdCells(d){
+  const cells=[]; for(let i=0;i<d.length;i+=2) cells.push(u16(d,i)/1000);
+  renderCells(cells);
+}
+
+// ---------- Ah-teller ----------
+let ah = {out:0, inn:0, sec:0}, lastT = null;
+try { const j = JSON.parse(localStorage.getItem('ahCounter')); if (j) ah = j; } catch(e){}
+function countAh(a){
+  const now = Date.now();
+  if (lastT !== null){
+    const dt = (now - lastT)/1000;
+    if (dt > 0 && dt < 30){ // hopp over hull i tilkoblingen
+      if (a < 0) ah.out += -a*dt/3600; else ah.inn += a*dt/3600;
+      ah.sec += dt;
+    }
+  }
+  lastT = now;
+  try { localStorage.setItem('ahCounter', JSON.stringify(ah)); } catch(e){}
+  $('ahOut').textContent = ah.out.toFixed(1)+' Ah';
+  $('ahIn').textContent = ah.inn.toFixed(1)+' Ah';
+  $('ahTime').textContent = ah.sec<3600 ? Math.round(ah.sec/60)+' min' : (ah.sec/3600).toFixed(1)+' t';
+}
+
+// ---------- UI ----------
+let avgLoad = null;
+function settings(){
+  const r = parseFloat($('realCap').value), t = parseFloat($('typLoad').value);
+  return {real: r>0?r:100, typ: t>0?t:3};
+}
+function render(x){
+  countAh(x.a);
+  const st = settings();
+  // BMS teller ned fra sin (feil) kapasitet; brukt = nom - rem, reelt igjen = reell - brukt
+  const used = Math.max(0, x.nom - x.rem);
+  const realRem = Math.max(0, st.real - used);
+  const soc = x.nom ? Math.round(Math.min(100, realRem/st.real*100)) : x.soc;
+  const ring=$('ring'); ring.style.setProperty('--p', soc);
+  ring.style.setProperty('--c', soc<20?'var(--bad)':soc<40?'var(--warn)':'var(--ok)');
+  $('socTxt').innerHTML = soc + '%' + (soc!==x.soc ? `<small style="display:block;font-size:11px;color:var(--mut);font-weight:400">BMS: ${x.soc}%</small>` : '');
+  $('vTot').textContent = x.v.toFixed(2)+' V';
+  $('cur').textContent = Math.abs(x.a).toFixed(2)+' A';
+  $('dir').textContent = x.a>0.05?'⬆ lader':x.a<-0.05?'⬇ forbruk':'hvile';
+  $('power').textContent = (x.v*x.a).toFixed(0)+' W';
+  // glattet forbruk så tallet ikke hopper
+  if (x.a < -0.05) avgLoad = avgLoad===null ? -x.a : avgLoad*0.8 + (-x.a)*0.2;
+  let eta='–', note='';
+  if (x.a > 0.05){ eta = fmtH((st.real-realRem)/x.a); note='til fullt ved '+x.a.toFixed(1)+' A lading';}
+  else if (x.a < -0.05){ eta = fmtH(realRem/avgLoad); note='ved nåværende forbruk ('+avgLoad.toFixed(1)+' A)'; }
+  else { eta = fmtH(realRem/st.typ); note='ved typisk forbruk ('+st.typ+' A) · '+realRem.toFixed(0)+' Ah igjen'; }
+  $('eta').textContent = eta;
+  $('etaNote').textContent = note;
+  document.querySelector('.eta .l').textContent = x.a > 0.05 ? 'Tid til fullt' : 'Timer igjen';
+  $('remCap').textContent = realRem.toFixed(1)+' Ah';
+  $('nomCap').innerHTML = st.real+' Ah'+(st.real!==x.nom?` <small style="font-size:12px;color:var(--mut)">(BMS: ${x.nom})</small>`:'');
+  $('cycles').textContent = x.cyc;
+  $('temps').textContent = x.temps.length ? x.temps.map(t=>t+'°').join(' / ') : '–';
+  $('chips').innerHTML = x.chips.map(c=>`<span class="${c.on?'on':'off'}">${c.t}</span>`).join('');
+}
+function renderCells(c){
+  if(!c.length) return;
+  const mx=Math.max(...c), mn=Math.min(...c);
+  $('delta').textContent = ((mx-mn)*1000).toFixed(0)+' mV';
+  $('cells').innerHTML = c.map((v,i)=>`<div class="cell ${v===mx&&mx!==mn?'hi':''} ${v===mn&&mx!==mn?'lo':''}"><small>Celle ${i+1}</small>${v.toFixed(3)} V</div>`).join('');
+}
+const fmtH = h => !isFinite(h)||h<0 ? '–' : h>=48 ? (h/24).toFixed(1)+' døgn' : h<1 ? Math.round(h*60)+' min' : Math.floor(h)+' t '+String(Math.round((h%1)*60)).padStart(2,'0')+' m';
+
+// ---------- Tilkobling ----------
+async function connect(){
+  try{
+    setStatus('Søker…');
+    device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:SERVICES});
+    log('Valgt enhet: '+(device.name||'(uten navn)')+' id='+device.id);
+    device.addEventListener('gattserverdisconnected', onDisc);
+    setStatus('Kobler til '+(device.name||'')+'…');
+    ogt = ogtSetup(device.name);
+    server = await device.gatt.connect();
+    await explore();
+    $('btnConnect').disabled = true; $('btnDisconnect').disabled = false;
+    setStatus('Tilkoblet: '+(device.name||device.id));
+    startPolling();
+  }catch(e){ log('Feil: '+e.message); setStatus('Ikke tilkoblet ('+e.message+')'); }
+}
+
+async function explore(){
+  const svcs = await server.getPrimaryServices();
+  for (const s of svcs){
+    log('Tjeneste '+s.uuid);
+    let chars=[]; try{ chars = await s.getCharacteristics(); }catch(e){}
+    for (const c of chars){
+      const p=c.properties, props=['read','write','writeWithoutResponse','notify','indicate'].filter(k=>p[k]).join(',');
+      log('  Kar. '+c.uuid+' ['+props+']');
+      if (p.notify||p.indicate){
+        try{
+          await c.startNotifications();
+          c.addEventListener('characteristicvaluechanged', ev=>{
+            const b=new Uint8Array(ev.target.value.buffer);
+            log('RX '+c.uuid.slice(4,8)+': '+hex(b));
+            if (ogt) ogtFeed(b); else jbdFeed(b);
+          });
+        }catch(e){ log('   notify feilet: '+e.message); }
+      }
+      if (p.read && !p.notify){
+        try{ const v=new Uint8Array((await c.readValue()).buffer); log('   les: '+hex(v)+'  "'+String.fromCharCode(...v.filter(x=>x>31&&x<127))+'"'); }catch(e){}
+      }
+      // JBD bruker ff02 for skriving; ellers første skrivbare karakteristikk i ff00/ffe0/fff0
+      if ((p.write||p.writeWithoutResponse) && (!writeChar || c.uuid.startsWith('0000ff02') || c.uuid.startsWith('0000fff6'))) writeChar = c;
+    }
+  }
+  log(writeChar ? 'Skriver til '+writeChar.uuid : 'Fant ingen skrivbar karakteristikk – lytter bare.');
+}
+
+async function send(bytes){
+  if(!writeChar) return;
+  try{
+    if (writeChar.properties.writeWithoutResponse) await writeChar.writeValueWithoutResponse(bytes);
+    else await writeChar.writeValue(bytes);
+    log('TX: '+hex(bytes));
+  }catch(e){ log('TX feilet: '+e.message); }
+}
+
+// ---------- SmartBat / Offgridtec-protokoll (SmartBat-Pro-appen) ----------
+// Enhetsnavn: SmartBat-A12345 eller SmartBat-B12345. Meldinger er ASCII XOR-et med en nøkkel avledet fra ID-en.
+const CRY_SEQ = [2,5,4,3,1,4,1,6,8,3,7,2,5,8,9,3];
+const OGT_A = [ // [felt, register, lengde]
+  ['soc',2,1],['rem',4,3],['v',8,2],['temp',12,2],['a',16,3],['runtime',24,2],['cyc',44,2],['nom',60,3]];
+const OGT_B = [
+  ['temp',8,2],['v',9,2],['a',10,3],['soc',13,1],['rem',15,3],['runtime',18,2],['cyc',23,2],['nom',24,3]];
+let ogt = null, ogtWait = null;
+
+function ogtSetup(name){
+  const m = /^SmartBat-([AB])(\d+)$/.exec(name||'');
+  if (!m) return null;
+  const type = m[1], idHex = parseInt(m[2],10).toString(16).toUpperCase().padStart(4,'0');
+  const key = [...idHex].reduce((s,c)=>s+CRY_SEQ[parseInt(c,16)],0) + (type==='A'?5:8);
+  return {type, key, header: type==='A' ? '+RAA' : '+R16', fields: type==='A'?OGT_A:OGT_B};
+}
+function ogtCmd(reg,len){
+  const c = ogt.header + reg.toString(16).toUpperCase().padStart(2,'0') + len.toString(16).toUpperCase().padStart(2,'0');
+  return new Uint8Array([...c].map(ch=>ch.charCodeAt(0)^ogt.key));
+}
+function ogtParse(bytes){
+  const msg = String.fromCharCode(...bytes.map(b=>b^ogt.key));
+  if (!msg.startsWith('+RD,')) return null;
+  if (msg.slice(4,7)==='Err') return {reg:0};
+  const body = msg.replace(/[\r\n]+$/,'');
+  const reg = parseInt(body.slice(4,6),16);
+  const h = body.slice(6,10);
+  let val = parseInt(h.slice(2,4)+h.slice(0,2),16);           // little endian 16-bit
+  if (body.length > 10) {                                       // 24-bit: signert + multiplikator
+    if (val > 0x7fff) val -= 0x10000;
+    val *= Math.max(parseInt(body.slice(10,12),16),1);
+  }
+  return {reg, val};
+}
+function ogtFeed(bytes){
+  if (!ogt || !ogtWait) return;
+  const r = ogtParse(Array.from(bytes));
+  if (!r) { log('SmartBat: kunne ikke tolke svar'); return; }
+  if (r.reg===0 || r.reg===ogtWait.reg){ const w=ogtWait; ogtWait=null; w.res(r); }
+}
+function ogtQuery(reg,len){
+  return new Promise(res=>{
+    ogtWait = {reg,res};
+    send(ogtCmd(reg,len));
+    setTimeout(()=>{ if(ogtWait && ogtWait.reg===reg){ ogtWait=null; res(null);} }, 1500);
+  });
+}
+async function ogtPoll(){
+  const x = {};
+  for (const [k,reg,len] of ogt.fields){
+    const r = await ogtQuery(reg,len);
+    if (!r || r.reg===0) { log('SmartBat: ingen svar på register '+reg); continue; }
+    x[k] = r.val;
+  }
+  if (x.v === undefined) return false;
+  const v = x.v/1000, a = (x.a||0)/(ogt.type==='A'?100:1000);
+  render({ v, a, soc: x.soc ?? 0, rem:(x.rem||0)/1000, nom:Math.floor((x.nom||0)/1000), cyc:x.cyc ?? '–',
+    temps: x.temp!==undefined ? [(x.temp/10-273.15).toFixed(1)] : [],
+    runtime: x.runtime, chips:[{t: a>0.05?'Lader':a<-0.05?'Utlader':'Hvile', on:true}] });
+  if (ogt.type==='B'){
+    const cells=[];
+    for (let i=0;i<16;i++){ const r=await ogtQuery(63-i,2); if(!r||r.reg===0) break; cells.push(r.val/1000); }
+    renderCells(cells);
+  }
+  gotData = true;
+  return true;
+}
+
+// ---------- Polling ----------
+let busy=false;
+function startPolling(){
+  ogt = ogtSetup(device.name);
+  if (ogt) log(`SmartBat type ${ogt.type} oppdaget, nøkkel 0x${ogt.key.toString(16)}`);
+  else log('Ikke et SmartBat-navn – prøver JBD-protokoll.');
+  let n=0;
+  const tick = async()=>{
+    if (busy) return; busy=true;
+    try{
+      if (ogt) await ogtPoll();
+      else { await send(JBD_BASIC); await new Promise(r=>setTimeout(r,400)); await send(JBD_CELLS); }
+      if (++n===4 && !gotData){ log('Ingen gyldige data etter 4 forsøk. Åpne "Diagnose", kopier loggen og send den til Claude.'); $('diag').open = true; }
+    } finally { busy=false; }
+  };
+  tick(); pollTimer = setInterval(tick, ogt?5000:3000);
+}
+
+function onDisc(){ clearInterval(pollTimer); lastT=null; writeChar=null; setStatus('Frakoblet'); log('Frakoblet');
+  $('btnConnect').disabled=false; $('btnDisconnect').disabled=true; }
+
+$('btnConnect').onclick = connect;
+$('btnDisconnect').onclick = ()=>{ if(device?.gatt.connected) device.gatt.disconnect(); };
+for (const id of ['realCap','typLoad']){
+  try{ const v=localStorage.getItem(id); if(v) $(id).value=v; }catch(e){}
+  $(id).addEventListener('change', ()=>{ try{ localStorage.setItem(id,$(id).value);}catch(e){} });
+}
+$('btnReset').onclick = ()=>{ ah={out:0,inn:0,sec:0}; lastT=null; countAh(0); };
+countAh(0); lastT=null;
+$('btnClear').onclick = ()=> logEl.textContent='';
+$('btnCopy').onclick = async()=>{ try{ await navigator.clipboard.writeText(logEl.textContent); $('btnCopy').textContent='Kopiert ✓'; }catch(e){ $('btnCopy').textContent='Marker teksten manuelt'; } setTimeout(()=>$('btnCopy').textContent='Kopier logg',2000); };
+</script>
+</body>
+</html>
