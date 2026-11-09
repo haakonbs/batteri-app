@@ -52,6 +52,7 @@
     <button id="btnDisconnect" class="sec" disabled>Koble fra</button>
   </div>
 </header>
+<div class="warnbox" id="errbox" hidden></div>
 <div class="warnbox" id="nobt" hidden>Nettleseren støtter ikke Web Bluetooth. Bruk Chrome eller Edge på PC/Mac/Android. På iPhone: bruk appen <b>Bluefy</b> (gratis i App Store).</div>
 
 <main>
@@ -109,6 +110,7 @@
 </main>
 
 <script>
+window.addEventListener('error', e=>{ const b=document.getElementById('errbox'); if(b){ b.textContent='Feil i appen: '+e.message; b.hidden=false; } });
 // ---------- Kjente BLE-tjenester for LiFePO4-BMS ----------
 const SERVICES = [
   0xff00, 0xffe0, 0xfff0, 0xffd0, 0xfe50, 0xfa00, 0x180a, 0x180f,
@@ -230,10 +232,29 @@ function renderCells(c){
 const fmtH = h => !isFinite(h)||h<0 ? '–' : h>=48 ? (h/24).toFixed(1)+' døgn' : h<1 ? Math.round(h*60)+' min' : Math.floor(h)+' t '+String(Math.round((h%1)*60)).padStart(2,'0')+' m';
 
 // ---------- Tilkobling ----------
+const full = u => typeof u==='number' ? '0000'+u.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb' : u;
+function showErr(msg){ const b=$('errbox'); b.textContent=msg; b.hidden=!msg; }
+async function pickDevice(){
+  const optionalServices = SERVICES.map(full);
+  try {
+    return await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices});
+  } catch(e){
+    if (e.name==='NotFoundError' && /cancel/i.test(e.message)) throw e; // brukeren avbrøt
+    log('acceptAllDevices feilet ('+e.name+': '+e.message+') – prøver med filtre');
+    return await navigator.bluetooth.requestDevice({
+      filters:[{services:[full(0xff00)]},{services:[full(0xfff0)]},{namePrefix:'SmartBat'},{namePrefix:'20'},{namePrefix:'SW'}],
+      optionalServices});
+  }
+}
 async function connect(){
+  showErr('');
   try{
-    setStatus('Søker…');
-    device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:SERVICES});
+    setStatus('Åpner Bluetooth-søk…');
+    if (navigator.bluetooth.getAvailability){
+      const ok = await navigator.bluetooth.getAvailability().catch(()=>true);
+      if (!ok) throw new Error('Bluetooth er ikke tilgjengelig. Sjekk at Bluetooth er på, og at nettleseren har lov til å bruke Bluetooth (iPhone: Innstillinger → Bluefy → Bluetooth).');
+    }
+    device = await pickDevice();
     log('Valgt enhet: '+(device.name||'(uten navn)')+' id='+device.id);
     device.addEventListener('gattserverdisconnected', onDisc);
     setStatus('Kobler til '+(device.name||'')+'…');
@@ -243,7 +264,11 @@ async function connect(){
     $('btnConnect').disabled = true; $('btnDisconnect').disabled = false;
     setStatus('Tilkoblet: '+(device.name||device.id));
     startPolling();
-  }catch(e){ log('Feil: '+e.message); setStatus('Ikke tilkoblet ('+e.message+')'); }
+  }catch(e){
+    log('Feil: '+e.name+': '+e.message);
+    setStatus('Ikke tilkoblet');
+    showErr('Kunne ikke koble til: '+e.message+'  — Tips: lukk Sunwind/SmartBat-appen og koble fra PC-en, batteriet tar bare én tilkobling om gangen.');
+  }
 }
 
 async function explore(){
